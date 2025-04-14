@@ -12,16 +12,23 @@ contract PropertyRegistry is Ownable, ReentrancyGuard {
         uint256 price;
         bool isListed;
         uint256 totalShares;
-        mapping(address => uint256) shares;
     }
 
+    // Main property storage
     mapping(string => Property) public properties;
+
+    // To check if property exists
     mapping(string => bool) public propertyExists;
+
+    // Share ownership: propertyId => holder => shares
+    mapping(string => mapping(address => uint256)) private propertyShares;
 
     event PropertyRegistered(string propertyId, address owner, string location, uint256 price);
     event PropertyTransferred(string propertyId, address from, address to);
-    event SharesIssued(string propertyId, address to, uint256 amount);
     event SharesTransferred(string propertyId, address from, address to, uint256 amount);
+
+    // Constructor to initialize Ownable with an initial owner
+    constructor(address initialOwner) Ownable(initialOwner) {}
 
     function registerProperty(
         string memory _propertyId,
@@ -31,15 +38,16 @@ contract PropertyRegistry is Ownable, ReentrancyGuard {
         require(!propertyExists[_propertyId], "Property already exists");
         require(_price > 0, "Price must be greater than 0");
 
-        Property storage newProperty = properties[_propertyId];
-        newProperty.propertyId = _propertyId;
-        newProperty.owner = msg.sender;
-        newProperty.location = _location;
-        newProperty.price = _price;
-        newProperty.isListed = true;
-        newProperty.totalShares = 100; // 100 shares per property
-        newProperty.shares[msg.sender] = 100;
+        properties[_propertyId] = Property({
+            propertyId: _propertyId,
+            owner: msg.sender,
+            location: _location,
+            price: _price,
+            isListed: true,
+            totalShares: 100
+        });
 
+        propertyShares[_propertyId][msg.sender] = 100;
         propertyExists[_propertyId] = true;
 
         emit PropertyRegistered(_propertyId, msg.sender, _location, _price);
@@ -50,6 +58,7 @@ contract PropertyRegistry is Ownable, ReentrancyGuard {
         require(properties[_propertyId].owner == msg.sender, "Not the property owner");
 
         properties[_propertyId].owner = _newOwner;
+
         emit PropertyTransferred(_propertyId, msg.sender, _newOwner);
     }
 
@@ -58,23 +67,29 @@ contract PropertyRegistry is Ownable, ReentrancyGuard {
         require(properties[_propertyId].owner == msg.sender, "Not the property owner");
         require(_amount > 0, "Amount must be greater than 0");
 
-        Property storage property = properties[_propertyId];
-        require(property.shares[msg.sender] >= _amount, "Insufficient shares");
+        mapping(address => uint256) storage shares = propertyShares[_propertyId];
 
-        property.shares[msg.sender] -= _amount;
-        property.shares[_to] += _amount;
+        require(shares[msg.sender] >= _amount, "Insufficient shares");
+
+        shares[msg.sender] -= _amount;
+        shares[_to] += _amount;
 
         emit SharesTransferred(_propertyId, msg.sender, _to, _amount);
     }
 
-    function getPropertyDetails(string memory _propertyId) external view returns (
-        address owner,
-        string memory location,
-        uint256 price,
-        bool isListed,
-        uint256 totalShares
-    ) {
+    function getPropertyDetails(string memory _propertyId)
+        external
+        view
+        returns (
+            address owner,
+            string memory location,
+            uint256 price,
+            bool isListed,
+            uint256 totalShares
+        )
+    {
         require(propertyExists[_propertyId], "Property does not exist");
+
         Property storage property = properties[_propertyId];
         return (
             property.owner,
@@ -85,8 +100,12 @@ contract PropertyRegistry is Ownable, ReentrancyGuard {
         );
     }
 
-    function getShareBalance(string memory _propertyId, address _holder) external view returns (uint256) {
+    function getShareBalance(string memory _propertyId, address _holder)
+        external
+        view
+        returns (uint256)
+    {
         require(propertyExists[_propertyId], "Property does not exist");
-        return properties[_propertyId].shares[_holder];
+        return propertyShares[_propertyId][_holder];
     }
-} 
+}
